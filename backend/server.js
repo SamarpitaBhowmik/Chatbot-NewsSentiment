@@ -5,6 +5,7 @@ const cors = require('cors');
 const path = require('path');
 const { Groq } = require('groq-sdk');
 const fs = require('fs');
+const tesseract = require('tesseract.js');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -57,17 +58,27 @@ const isAudio = (file) => /mp3|wav|ogg|mpeg/.test(path.extname(file.originalname
 async function transcribeAudio(audioPath) {
   try {
     const audioFile = fs.createReadStream(audioPath);
-    
     const transcription = await groq.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-large-v3-turbo"
-      
     });
-
     return transcription.text;
   } catch (error) {
     console.error("Audio transcription error:", error);
     return "Error transcribing audio";
+  }
+}
+
+// Extract text from image using OCR (Tesseract.js)
+async function extractTextFromImage(imagePath) {
+  try {
+    const result = await tesseract.recognize(imagePath, 'eng', {
+      logger: (m) => console.log(m),
+    });
+    return result.data.text;
+  } catch (error) {
+    console.error("Image OCR error:", error);
+    return "Error extracting text from image";
   }
 }
 
@@ -121,8 +132,8 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
 
     try {
       if (isImage(req.file)) {
-        // For images, we'll just analyze the filename/metadata since Groq doesn't do image analysis directly
-        text = `Image file: ${req.file.originalname}`;
+        // Extract text from image using OCR
+        text = await extractTextFromImage(filePath);
         fileType = 'image';
       } else if (isAudio(req.file)) {
         text = await transcribeAudio(filePath);
